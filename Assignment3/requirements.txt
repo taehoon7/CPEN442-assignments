@@ -1,1 +1,2 @@
 pygubu==0.14
+pycryptodome>=3.11.0
