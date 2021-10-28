@@ -149,17 +149,18 @@ class Assignment3VPN:
                     break
 
                 # Checking if the received message is part of your protocol
-                # TODO: MODIFY THE INPUT ARGUMENTS AND LOGIC IF NECESSARY
                 if self.prtcl.IsMessagePartOfProtocol(cipher_text):
                     # Disabling the button to prevent repeated clicks
                     self.secureButton["state"] = "disabled"
                     # Processing the protocol message
-                    self.prtcl.ProcessReceivedProtocolMessage(cipher_text)
+                    response_needed = self.prtcl.ProcessReceivedProtocolMessage(cipher_text, self.sharedSecret.get())
+                    if response_needed:
+                        self.SecureConnection()
 
                 # Otherwise, decrypting and showing the messaage
                 else:
                     plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
-                    self._AppendMessage("Other: {}".format(plain_text.decode()))
+                    self._AppendMessage("Other: {}".format(plain_text))
                     
             except Exception as e:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
@@ -170,7 +171,7 @@ class Assignment3VPN:
     def _SendMessage(self, message):
         plain_text = message
         cipher_text = self.prtcl.EncryptAndProtectMessage(plain_text)
-        self.conn.send(cipher_text.encode())
+        self.conn.send(cipher_text)
             
 
     # Secure connection with mutual authentication and key establishment
@@ -178,9 +179,9 @@ class Assignment3VPN:
         # disable the button to prevent repeated clicks
         self.secureButton["state"] = "disabled"
 
-        # TODO: THIS IS WHERE YOU SHOULD IMPLEMENT THE START OF YOUR MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL, MODIFY AS YOU SEEM FIT
-        init_message = self.prtcl.GetProtocolInitiationMessage()
-        self._SendMessage(init_message)
+        # START OF MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL
+        init_message = self.prtcl.GetProtocolInitiationMessage(self.s.getsockname(), self.sharedSecret.get())
+        self.conn.send(init_message)
 
 
     # Called when SendMessage button is clicked
