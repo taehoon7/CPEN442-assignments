@@ -7,6 +7,8 @@ from Crypto.Random import get_random_bytes, random
 g = 3
 p = 29
 clock_skew_s = 5
+MAX_MSG = 2
+TIME_LIMIT = 10 # in seconds
 
 class SecurityError(Exception):
     pass
@@ -16,11 +18,13 @@ class Protocol:
     def __init__(self):
         self._key = None
         self._dh_exp = None
-        self._messages_used = 0 # I think we said we would ask the user to make a new session key after a vertain number of time/messages, maybe nag them about this if that happens
-        pass
+        self._refresh_key = None
+        self._messages_used = None
+        self._initial_timestamp = None
 
     # Creating the initial message of your protocol (to be send to the other party to bootstrap the protocol)
     def GetProtocolInitiationMessage(self, sockname, secret):
+
         (hostname, port) = sockname
         hostname_segments = hostname.split('.')
         ip = bytes()
@@ -107,6 +111,9 @@ class Protocol:
         h.update(key.to_bytes(1, sys.byteorder))
         hashed_key = h.digest()
         self._key = hashed_key
+        self._refresh_key = False
+        self._messages_used = 0
+        self._initial_timestamp = int(time.time())
 
 
     # Encrypting messages
@@ -133,8 +140,9 @@ class Protocol:
         cipher_text = b'\x01' + iv + ciph_bytes
 
         self._messages_used += 1
-        # if (self._messages_used > message threshold || initial auth message time - current time > time threshold) remind user to make a new session TODO
-
+        current_timestamp = int(time.time())
+        if (self._messages_used >= MAX_MSG or abs(current_timestamp - self._initial_timestamp) > TIME_LIMIT): #|| initial auth message time - current time > time threshold) remind user to make a new session TODO
+            self._refresh_key = True
         print (cipher_text) # Temporary print since there is no decrypt yet.
         return cipher_text
 
@@ -164,7 +172,10 @@ class Protocol:
             raise SecurityError('Integrity is not confirmed due to hash mismatch')
 
         self._messages_used += 1
-        # if (self._messages_used > message threshold || initial auth message time - current time > time threshold) remind user to make a new session TODO
+        current_timestamp = int(time.time())
+        print(current_timestamp)
+        if (self._messages_used >= MAX_MSG or abs(current_timestamp - self._initial_timestamp) > TIME_LIMIT):
+            self._refresh_key = True
 
         plain_text = text_bytes.decode('UTF-8')
         return plain_text

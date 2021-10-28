@@ -6,6 +6,7 @@ import pygubu
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
+import html
 
 # local import from "protocol.py"
 from protocol import Protocol
@@ -161,6 +162,8 @@ class Assignment3VPN:
                 else:
                     plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
                     self._AppendMessage("Other: {}".format(plain_text))
+                    if self.mode.get() == 0 and self.prtcl._refresh_key == True: # refresh session key if client side
+                        self.SecureConnection()
                     
             except Exception as e:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
@@ -172,12 +175,15 @@ class Assignment3VPN:
         plain_text = message
         cipher_text = self.prtcl.EncryptAndProtectMessage(plain_text)
         self.conn.send(cipher_text)
-            
 
     # Secure connection with mutual authentication and key establishment
     def SecureConnection(self):
         # disable the button to prevent repeated clicks
         self.secureButton["state"] = "disabled"
+        if self.mode.get() == 0:
+            self._AppendLog("ClIENT: Generating new Session Key for secure connection.")
+        else:
+            self._AppendLog("SERVER: Generating new Session Key for secure connection.")
 
         # START OF MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL
         init_message = self.prtcl.GetProtocolInitiationMessage(self.s.getsockname(), self.sharedSecret.get())
@@ -189,9 +195,12 @@ class Assignment3VPN:
         text = self.textMessage.get()
         if  text != "" and self.s is not None:
             try:
+                text = html.escape(text) # sanitize the input
                 self._SendMessage(text)
                 self._AppendMessage("You: {}".format(text))
                 self.textMessage.set("")
+                if self.mode.get() == 0 and self.prtcl._refresh_key == True: # refresh session key if client side
+                    self.SecureConnection()
             except Exception as e:
                 self._AppendLog("SENDING_MESSAGE: Error sending data: {}".format(str(e)))
                 
@@ -216,7 +225,7 @@ class Assignment3VPN:
         
     def _AppendMessage(self, text):
         self.messagesText.configure(state='normal')
-        self.messagesText.insert(tk.END, text + "\n\n")
+        self.messagesText.insert(tk.END, html.unescape(text) + "\n\n") # revert sanitized message
         self.messagesText.see(tk.END)
         self.messagesText.configure(state='disabled')
 
