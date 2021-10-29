@@ -162,8 +162,6 @@ class Assignment3VPN:
                 else:
                     plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
                     self._AppendMessage("Other: {}".format(plain_text))
-                    if self.mode.get() == 0 and self.prtcl._refresh_key == True: # refresh session key if client side
-                        self.SecureConnection()
                     
             except Exception as e:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
@@ -180,10 +178,6 @@ class Assignment3VPN:
     def SecureConnection(self):
         # disable the button to prevent repeated clicks
         self.secureButton["state"] = "disabled"
-        if self.mode.get() == 0:
-            self._AppendLog("ClIENT: Generating new Session Key for secure connection.")
-        else:
-            self._AppendLog("SERVER: Generating new Session Key for secure connection.")
 
         # START OF MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL
         init_message = self.prtcl.GetProtocolInitiationMessage(self.s.getsockname(), self.sharedSecret.get())
@@ -199,8 +193,6 @@ class Assignment3VPN:
                 self._SendMessage(text)
                 self._AppendMessage("You: {}".format(text))
                 self.textMessage.set("")
-                if self.mode.get() == 0 and self.prtcl._refresh_key == True: # refresh session key if client side
-                    self.SecureConnection()
             except Exception as e:
                 self._AppendLog("SENDING_MESSAGE: Error sending data: {}".format(str(e)))
                 

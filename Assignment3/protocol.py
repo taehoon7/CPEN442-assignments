@@ -4,11 +4,9 @@ from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto.Random import get_random_bytes, random
 
-g = 3
-p = 29
-clock_skew_s = 5
-MAX_MSG = 2
-TIME_LIMIT = 10 # in seconds
+G_DH = 3
+P_DH = 29
+CLOCK_SKEW_S = 5
 
 class SecurityError(Exception):
     pass
@@ -18,9 +16,6 @@ class Protocol:
     def __init__(self):
         self._key = None
         self._dh_exp = None
-        self._refresh_key = None
-        self._messages_used = None
-        self._initial_timestamp = None
 
     # Creating the initial message of your protocol (to be send to the other party to bootstrap the protocol)
     def GetProtocolInitiationMessage(self, sockname, secret):
@@ -34,10 +29,10 @@ class Protocol:
         identifier = (ip + port)
 
         if self._dh_exp is None:
-            self._dh_exp = random.randint(1, p - 1)
-            dh_value = pow(g, self._dh_exp, p).to_bytes(4, sys.byteorder)
+            self._dh_exp = random.randint(1, G_DH - 1)
+            dh_value = pow(G_DH, self._dh_exp, P_DH).to_bytes(4, sys.byteorder)
         else:
-            dh_value = pow(g, self._dh_exp, p).to_bytes(4, sys.byteorder)
+            dh_value = pow(G_DH, self._dh_exp, P_DH).to_bytes(4, sys.byteorder)
             self._dh_exp = None
 
         h = SHA256.new()
@@ -90,17 +85,17 @@ class Protocol:
 
         # Authenticate sender by checking if decrypted timestamp matches
         print('Authenticating:  received ', rcvd_timestamp, ', expected ', timestamp)
-        if abs(rcvd_timestamp - timestamp) > clock_skew_s:
+        if abs(rcvd_timestamp - timestamp) > CLOCK_SKEW_S:
             raise SecurityError('Authentication failed :\'(')
 
         if self._dh_exp is None:
             # Received initiation for DH exchange. Compute session key and send the next message back.
-            self._dh_exp = random.randint(1, p - 1)
-            self.SetSessionKey(pow(rcvd_dh_value, self._dh_exp, p))
+            self._dh_exp = random.randint(1, P_DH - 1)
+            self.SetSessionKey(pow(rcvd_dh_value, self._dh_exp, P_DH))
             return True
         else:
             # Received response to DH initiation. Compute session key.
-            self.SetSessionKey(pow(rcvd_dh_value, self._dh_exp, p))
+            self.SetSessionKey(pow(rcvd_dh_value, self._dh_exp, P_DH))
             self._dh_exp = None
             return False
 
@@ -111,9 +106,6 @@ class Protocol:
         h.update(key.to_bytes(1, sys.byteorder))
         hashed_key = h.digest()
         self._key = hashed_key
-        self._refresh_key = False
-        self._messages_used = 0
-        self._initial_timestamp = int(time.time())
 
 
     # Encrypting messages
@@ -139,10 +131,6 @@ class Protocol:
         ciph_bytes = cipher.encrypt(mssg_bytes)
         cipher_text = b'\x01' + iv + ciph_bytes
 
-        self._messages_used += 1
-        current_timestamp = int(time.time())
-        if (self._messages_used >= MAX_MSG or abs(current_timestamp - self._initial_timestamp) > TIME_LIMIT): #|| initial auth message time - current time > time threshold) remind user to make a new session TODO
-            self._refresh_key = True
         print (cipher_text) # Temporary print since there is no decrypt yet.
         return cipher_text
 
@@ -169,13 +157,7 @@ class Protocol:
         h.update(text_bytes)
         print('Integrity check: received ', hash_bytes, ', expected ', h.digest())
         if (hash_bytes != h.digest()):
-            raise SecurityError('Integrity is not confirmed due to hash mismatch')
-
-        self._messages_used += 1
-        current_timestamp = int(time.time())
-        print(current_timestamp)
-        if (self._messages_used >= MAX_MSG or abs(current_timestamp - self._initial_timestamp) > TIME_LIMIT):
-            self._refresh_key = True
+            raise SecurityError('Integrity/Authentication is not confirmed due to hash mismatch')
 
         plain_text = text_bytes.decode('UTF-8')
         return plain_text
