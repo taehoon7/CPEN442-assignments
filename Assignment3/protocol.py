@@ -41,13 +41,6 @@ class Protocol:
 
         timestamp = int(time.time()).to_bytes(4, sys.byteorder)
 
-        iv = get_random_bytes(16)
-        cipher = AES.new(hashed_secret, AES.MODE_CBC, iv=iv)
-        padded = timestamp + dh_value
-        while sys.getsizeof(padded) % 16 != 1:
-            padded += b'\x00'
-        encrypted = cipher.encrypt(padded)
-
         identifier_bytes = identifier.to_bytes((identifier.bit_length() + 7) // 8)
         timestamp_bytes = timestamp.to_bytes((timestamp.bit_length() + 7) // 8)
         dh_value_bytes = dh_value.to_bytes((dh_value.bit_length() + 7) // 8)
@@ -57,12 +50,18 @@ class Protocol:
         while (sys.getsizeof(hash_input) + 32) % 16 != 1:
             hash_input += b'\x00'
         
-
         h = SHA256.new()
         h.update(hash_input)
         hash = h.digest()
 
-        return b'\x00' + identifier + hash + iv + encrypted
+        iv = get_random_bytes(16)
+        cipher = AES.new(hashed_secret, AES.MODE_CBC, iv=iv)
+        padded = hash + timestamp + dh_value
+        while sys.getsizeof(padded) % 16 != 1:
+            padded += b'\x00'
+        encrypted = cipher.encrypt(padded)
+
+        return b'\x00' + identifier + iv + encrypted
 
 
     # Checking if a received message is part of your protocol (called from app.py)
@@ -82,9 +81,8 @@ class Protocol:
         # Ignore the first byte
         message = message[1:]
         identifier = message[0:6]
-        rcvd_hash = message[6:38]
-        iv = message[38:54]
-        ciphertext = message[54:]
+        iv = message[6:22]
+        ciphertext = message[22:]
 
         h = SHA256.new()
         h.update(secret.encode())
@@ -95,8 +93,9 @@ class Protocol:
         cipher = AES.new(hashed_secret, AES.MODE_CBC, iv=iv)
         decrypted = cipher.decrypt(ciphertext)
 
-        rcvd_timestamp = int.from_bytes(decrypted[0:4], sys.byteorder)
-        rcvd_dh_value = int.from_bytes(decrypted[4:], sys.byteorder)
+        rcvd_hash = int.from_bytes(decrypted[0:32], sys.byteorder)
+        rcvd_timestamp = int.from_bytes(decrypted[32:36], sys.byteorder)
+        rcvd_dh_value = int.from_bytes(decrypted[36:], sys.byteorder)
 
         identifier_bytes = identifier.to_bytes((identifier.bit_length() + 7) // 8)
         timestamp_bytes = rcvd_timestamp.to_bytes((rcvd_timestamp.bit_length() + 7) // 8)
