@@ -48,7 +48,21 @@ class Protocol:
             padded += b'\x00'
         encrypted = cipher.encrypt(padded)
 
-        return b'\x00' + identifier + iv + encrypted
+        identifier_bytes = identifier.to_bytes((identifier.bit_length() + 7) // 8)
+        timestamp_bytes = timestamp.to_bytes((timestamp.bit_length() + 7) // 8)
+        dh_value_bytes = dh_value.to_bytes((dh_value.bit_length() + 7) // 8)
+
+        hash_input = identifier_bytes + timestamp_bytes + dh_value_bytes
+        # Need to pad the message before hashing so the hash will match what the receiver sees
+        while (sys.getsizeof(hash_input) + 32) % 16 != 1:
+            hash_input += b'\x00'
+        
+
+        h = SHA256.new()
+        h.update(hash_input)
+        hash = h.digest()
+
+        return b'\x00' + identifier + hash + iv + encrypted
 
 
     # Checking if a received message is part of your protocol (called from app.py)
@@ -68,8 +82,9 @@ class Protocol:
         # Ignore the first byte
         message = message[1:]
         identifier = message[0:6]
-        iv = message[6:22]
-        ciphertext = message[22:]
+        rcvd_hash = message[6:38]
+        iv = message[38:54]
+        ciphertext = message[54:]
 
         h = SHA256.new()
         h.update(secret.encode())
@@ -83,10 +98,22 @@ class Protocol:
         rcvd_timestamp = int.from_bytes(decrypted[0:4], sys.byteorder)
         rcvd_dh_value = int.from_bytes(decrypted[4:], sys.byteorder)
 
+        identifier_bytes = identifier.to_bytes((identifier.bit_length() + 7) // 8)
+        timestamp_bytes = rcvd_timestamp.to_bytes((rcvd_timestamp.bit_length() + 7) // 8)
+        dh_value_bytes = rcvd_dh_value.to_bytes((rcvd_dh_value.bit_length() + 7) // 8)
+
+        h = SHA256.new()
+        h.update(identifier_bytes + timestamp_bytes + dh_value_bytes)
+        hash = h.digest()
+
         # Authenticate sender by checking if decrypted timestamp matches
-        print('Authenticating:  received ', rcvd_timestamp, ', expected ', timestamp)
+        print('Authenticating based on clock skew:  received ', rcvd_timestamp, ', expected ', timestamp)
         if abs(rcvd_timestamp - timestamp) > CLOCK_SKEW_S:
             raise SecurityError('Authentication failed :\'(')
+
+        print('Integrity check: received ', rcvd_hash, ', expected ', hash)
+        if (rcvd_hash != hash):
+            raise SecurityError('Integrity/Authentication is not confirmed due to hash mismatch')
 
         if self._dh_exp is None:
             # Received initiation for DH exchange. Compute session key and send the next message back.
